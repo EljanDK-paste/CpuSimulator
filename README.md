@@ -1,12 +1,34 @@
-# CPU Simulator — ITE131 · Unit II · Computer Architecture
+# ITE131 Simulators — Computer Architecture and Operating Systems
+
+Two CPU visualisers for ITE131 lectures, served from one app and switched with
+the tabs at the top:
+
+| Route | Simulator | What it is |
+| --- | --- | --- |
+| `#/cpu` *(default)* | **CPU Simulator** | A generic four-register machine. Fetch / decode / execute at the phase level — the gentler introduction, and the one Unit II was built around. |
+| `#/msu1` | **MSU-1 Simulator** | The MSU-1 teaching machine from the Units I–V materials: 8-bit words, 16 shared locations, single accumulator, stepped one **clock cycle** at a time. |
+
+They share nothing but the page shell, so each can be taught, changed or shown
+on its own. Routing is by URL hash, so both deep links survive a refresh from
+any static host and even from `file://`.
+
+```bash
+pnpm install
+pnpm dev        # http://localhost:5173  -> #/cpu
+                # http://localhost:5173/#/msu1
+```
+
+Other scripts: `pnpm build` (typecheck + production bundle), `pnpm preview`,
+`pnpm lint`.
+
+---
+
+# 1 · CPU Simulator — `#/cpu`
 
 An interactive fetch–decode–execute visualiser for lectures on CPU
 organisation. Students type a short assembly program, then step through it one
 phase at a time and watch the Control Unit, ALU, registers and data memory
 light up as each instruction moves through the machine.
-
-Everything runs in the browser — there is no backend and nothing to install for
-students beyond opening the page.
 
 ## What it shows
 
@@ -23,16 +45,6 @@ Highlight colours carry meaning: **amber** marks control-unit activity and
 writes, **teal** marks the ALU and reads. The spotlight bar under the header
 narrates the phase that just executed. Animations respect
 `prefers-reduced-motion`.
-
-## Running it
-
-```bash
-pnpm install
-pnpm dev        # http://localhost:5173
-```
-
-Other scripts: `pnpm build` (typecheck + production bundle), `pnpm preview`
-(serve the build), `pnpm lint`.
 
 ## Using the simulator
 
@@ -125,19 +137,198 @@ into undefined behaviour:
 - a jump target outside the program
 - an empty program
 
+---
+
+# 2 · MSU-1 Simulator — `#/msu1`
+
+An interactive visualiser for **MSU-1**, the teaching machine used as the
+running case study through Units I–V. Students type MSU-1 assembly, watch it
+assemble into 8-bit words, and step the machine one clock cycle at a time while
+the register transfers, control signals, buses and memory light up.
+
+The two simulators answer different questions. The CPU Simulator asks *what are
+the parts of a processor and what does each phase do?* MSU-1 asks *what exactly
+happens on each clock edge, and what does an instruction cost?* Unit II is well
+served by the first; Units III–V need the second.
+
+## Why cycle-level
+
+The unit's central slide (U3-S8) is the micro-operation table for a single
+`LDA 13`: six clock cycles, four registers, one instruction. So the **Cycle**
+button advances one clock cycle, not one instruction, and the Micro-operations
+panel shows the live version of that table with the current row highlighted:
+
+```
+T1  fetch    MAR ← PC
+T2  fetch    MDR ← M[MAR]; PC ← PC + 1
+T3  decode   IR ← MDR
+T4  execute  MAR ← IR[operand]
+T5  execute  MDR ← M[MAR]
+T6  execute  ACC ← MDR
+```
+
+The execute rows genuinely do not exist until T3 has put the opcode into IR —
+until then the panel says so, which is the point.
+
+## The machine
+
+| Property | Value |
+| --- | --- |
+| Word size | 8 bits |
+| Memory | 16 locations, addresses 0–15, 8 bits each |
+| Instruction format | 4-bit opcode + 4-bit operand, in one 8-bit word |
+| Architecture style | von Neumann, single accumulator |
+| Programmer-visible registers | `ACC` (8), `X` index (4), flags `Z C N V` |
+| Internal registers | `PC` (4), `MAR` (4), `MDR` (8), `IR` (8), `B` (8) |
+| Buses | address 4 lines, data 8 lines |
+
+Code and data share **one** memory, so the memory panel shows every word read
+both ways at once — *as instruction* and *as data*. The bits do not change;
+only the opcode that reaches them decides what they mean.
+
+`B` is the ALU's second-operand latch: on `ADD`, `SUB` and `AND` it takes MDR in
+the same cycle the ALU computes, which is what gives the register a job.
+
+## Instruction set
+
+| Opcode | Mnemonic | Operation | Mode | Flags | Cycles |
+| --- | --- | --- | --- | --- | --- |
+| `0000` | `LDA a` | `ACC ← M[a]` | Direct | `Z N` | 6 |
+| `0001` | `STA a` | `M[a] ← ACC` | Direct | — | 6 |
+| `0010` | `ADD a` | `ACC ← ACC + M[a]` | Direct | `Z C N V` | 6 |
+| `0011` | `SUB a` | `ACC ← ACC − M[a]` | Direct | `Z C N V` | 6 |
+| `0100` | `LDI n` | `ACC ← n` | Immediate | `Z N` | 4 |
+| `0101` | `JMP a` | `PC ← a` | Direct | — | 4 |
+| `0110` | `JZ a` | `if Z=1 then PC ← a` | Direct | — | 4 |
+| `0111` | `AND a` | `ACC ← ACC ∧ M[a]` | Direct | `Z N` | 6 |
+| `1000` | `LDN a` | `ACC ← M[M[a]]` | Indirect | `Z N` | 8 |
+| `1001` | `LDX a` | `ACC ← M[a + X]` | Indexed | `Z N` | 6 |
+| `1010` | `INX` | `X ← X + 1` | Implied | `Z` | 4 |
+| `1011` | `NOT` | `ACC ← ¬ACC` | Implied | `Z N` | 4 |
+| `1100` | `SHL` | `ACC ← ACC ≪ 1` | Implied | `Z C N` | 4 |
+| `1101` | `OUT` | `display ← ACC` | Implied | — | 4 |
+| `1110` | — | *reserved* | — | — | — |
+| `1111` | `HLT` | stop execution | Implied | — | 4 |
+
+The cycle counts are the teaching point: immediate needs no memory access,
+direct needs one, indirect needs two — and `LDN` costs two cycles more than
+`LDA` for exactly that reason.
+
+Opcode `1110` is left undefined on purpose — it is the free slot the Unit III
+case study asks students to fill. Executing it halts the machine and says so.
+
+### Flags
+
+`Z` zero · `C` carry out of the MSB, i.e. **unsigned** overflow · `N` MSB of the
+result · `V` carry into the MSB differs from the carry out, i.e. **signed**
+overflow.
+
+One adder serves both `ADD` and `SUB` — subtraction is addition of the two's
+complement, and on `SUB` a set `C` means *no borrow*. The hardware cannot know
+which reading you meant, so it computes both `C` and `V` and lets the program
+decide. The **Carry vs overflow** preset is `100 + 50`: `C = 0`, `V = 1`.
+
+## Assembly syntax
+
+Case-insensitive mnemonics, one instruction per line. Comments start with `#`,
+`;` or `//`.
+
+- `LDA 13` — an instruction. Operands are `0`–`15`; the field is only 4 bits, so
+  `LDI 20` and `LDA 16` are both rejected with that reason.
+- `13: 25` — an **address prefix** sets the location counter, so the listings in
+  the learning material can be typed in verbatim. On its own (`13:`) it just
+  moves the counter.
+- `25` — a bare number is a data byte at the current location.
+- `DAT 25` / `DB 25` — the same, explicitly. Several values may follow.
+- `ORG 13` — set the location counter.
+
+Numbers may be written `25`, `0x19`, `19h`, `$19`, `0b11001` or `11001b`, and
+data bytes may be negative (`-45` is stored as `D3h`).
+
+The assembler refuses a program and says why, rather than running into
+undefined behaviour: unknown instruction, wrong operand count, an operand
+outside `0`–`15`, a value that will not fit in 8 bits, an address written twice
+by two different lines, an address past 15, or an empty program.
+
+### Worked example — U3-S9
+
+```
+LDA 13        # ACC <- M[13] = 25
+ADD 14        # ACC <- 25 + 17 = 42
+STA 15        # M[15] <- 42
+OUT           # display <- 42
+HLT
+
+13: 25
+14: 17
+```
+
+assembles to `0D 2E 1F D0 F0` at addresses 0–4 with `19h` and `11h` at 13–14,
+which is the byte-for-byte listing in the learning material. It retires 5
+instructions in 26 clock cycles — CPI 5.2, shown live in the header, which is
+where `CPU time = IC × CPI × clock cycle time` stops being an abstraction.
+
+## Presets
+
+| Preset | Drawn from | Shows |
+| --- | --- | --- |
+| Add & display | U3-S9 | The canonical trace, hand-assembly, `OUT` |
+| Carry vs overflow | U3-S16 | `100 + 50`: `C = 0` but `V = 1` |
+| Indirect — LDN | U3-S11 | Pointers, and the extra memory access they cost |
+| Indexed — LDX / INX | U3-S12 | `EA = base + X`, what a `for` loop compiles to |
+| Countdown loop | — | `Z`, `JZ` and `JMP`; branching without an "if" |
+| Bitwise — AND / SHL / NOT | U3-S17 | Masking, doubling, and `C` catching the shifted-out bit |
+
+---
+
+## Using MSU-1
+
+1. Type a program, or pick one of the six presets — each is drawn from a slide
+   in the learning material.
+2. **Assemble & load** validates the source and writes it into memory.
+3. **Cycle** advances one clock cycle. **Instruction** runs to the end of the
+   current instruction. **Run** free-runs at the selected clock speed;
+   **Reset** reloads memory from the assembled image.
+
+Things worth pointing at while stepping:
+
+- `PC` is incremented during **fetch** (T2), so from decode onward it already
+  points at the *next* instruction. That is why `JMP` works by overwriting a PC
+  that has already moved on.
+- Jump operands are **memory addresses**, not instruction numbers, because on a
+  von Neumann machine that is all there is.
+- Nothing stops the PC running off the end of the code into data and executing
+  it. That is not a bug in the simulator — it is the stored-program concept.
+- `X` and `MAR` are 4 bits, so `LDX` wraps its effective address at 16. The
+  trace says so when it happens.
+
+---
+
 ## Project layout
 
 ```
-index.html              Entry point
-src/main.tsx            React root
-src/CPUSimulator.tsx    Assembler, machine state, and the whole UI
-src/index.css           Reset plus all component styling (.cs-* classes)
+index.html                Entry point
+src/main.tsx              React root
+src/App.tsx               Hash router and the tab bar
+src/app.css               Shell, nav, and the height overrides both apps need
+
+src/CPUSimulator.tsx      1 · assembler, machine state, and UI
+src/index.css             Reset plus .cs-* styling for the CPU Simulator
+
+src/MSU1Simulator.tsx     2 · ISA, assembler, micro-operations, machine and UI
+src/msu1.css              .m1-* styling for MSU-1
 ```
 
-`CPUSimulator.tsx` is deliberately one file so it can be read top to bottom in
-a lecture: instruction table → assembler → machine state and the phase
-step function → rendering.
+Each simulator is deliberately one file so it can be read top to bottom in a
+lecture. `MSU1Simulator.tsx` goes: ISA table → assembler → machine state and
+flag arithmetic → micro-operation sequences → the one-cycle `advance` function
+→ rendering.
+
+`app.css` is the only place the two meet: both components are written to own
+the whole viewport, so the shell relaxes that from the outside rather than by
+editing either file.
 
 ## Built with
 
 React 19, TypeScript and Vite, with [lucide-react](https://lucide.dev) icons.
+MSU-1 and MSU-1M are fictional teaching machines from the ITE131 materials.

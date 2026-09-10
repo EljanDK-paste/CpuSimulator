@@ -1,0 +1,78 @@
+/* The shell that carries the two simulators, plus the nav that switches them.
+
+   Both simulators are written to own the whole viewport (height:100dvh,
+   overflow:hidden). Under the shell they instead fill whatever the nav leaves,
+   so the overrides below relax that — from here, rather than by editing either
+   component. */
+
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: #0b111c;
+}
+
+.app-shell > .cs-app,
+.app-shell > .m1-app {
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  /* Each sheet squares its own corners via `#root .x-app`, which no longer
+     matches now that the shell sits in between. */
+  border-radius: 0;
+}
+
+.app-nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 0 18px;
+  background: #080d15;
+  border-bottom: 1px solid #233043;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.app-brand {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4b5b72;
+  padding: 10px 0;
+}
+
+.app-tabs { display: flex; gap: 4px; }
+
+.app-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 14px;
+  text-decoration: none;
+  color: #8393a6;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.app-tab:hover { color: #e7edf3; background: rgba(255, 255, 255, 0.03); }
+.app-tab.is-active { color: #f1d9ae; border-bottom-color: #e3a857; }
+.app-tab:focus-visible { outline: 2px solid #e3a857; outline-offset: -2px; }
+
+.app-tab-label { font-size: 13px; font-weight: 600; line-height: 1.25; }
+.app-tab-note { font-size: 10px; color: #4b5b72; }
+.app-tab.is-active .app-tab-note { color: #8a7a5c; }
+
+/* Each simulator abandons its fixed-height layout at its own breakpoint — the
+   original at 1080px, MSU-1 at 1240px. The shell has to follow whichever one
+   is mounted, or the app overflows a viewport-height shell. */
+@media (max-width: 1080px) {
+  .app-shell.is-cpu { height: auto; min-height: 100vh; }
+}
+@media (max-width: 1240px) {
+  .app-shell.is-msu1 { height: auto; min-height: 100vh; }
+}
+@media (max-width: 520px) {
+  .app-brand { display: none; }
+  .app-nav { padding: 0 12px; }
+}
