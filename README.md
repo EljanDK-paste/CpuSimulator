@@ -1,4 +1,5 @@
-# CPU Simulator — Computer Architecture and Operating Systems
+# CPU Simulator — Computer Architecture and 
+# Operating Systems
 
 # Reuqirements
 
